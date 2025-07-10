@@ -1,0 +1,331 @@
+// Datasource configuration: specifies the database provider (PostgreSQL) and the connection URL from environment variables
+datasource db {
+  provider = "postgresql" // Using PostgreSQL as the database provider
+  url      = env("DATABASE_URL") // Database connection URL from the environment variable
+}
+
+// Generator configuration: specifies that we will use Prisma Client to interact with the database
+generator client {
+  provider        = "prisma-client-js" // Using Prisma Client
+  binaryTargets   = ["native", "linux-arm64-openssl-1.0.x", "debian-openssl-1.1.x"]
+  previewFeatures = ["fullTextSearchPostgres"]
+  output   = "../prisma/@generated/client"
+}
+
+generator nestgraphql {
+  provider                              = "prisma-nestjs-graphql"
+  output                                = "../prisma/@generated"
+  noAtomicOperations                    = false
+  combineScalarFilters                  = false
+  reExport                              = None
+  emitSingle                            = true
+  emitCompiled                          = true
+  purgeOutput                           = false
+  requireSingleFieldsInWhereUniqueInput = false
+  fields_Validator_from                 = "class-validator"
+  fields_Validator_input                = true
+  fields_Scalars_from                   = "graphql-scalars"
+  fields_Scalars_input                  = true
+  useInputType_WhereInput_ALL           = "WhereInput"
+  decorate_1_type                       = "Create@(One|Many)UserArgs"
+  decorate_1_field                      = data
+  decorate_1_name                       = ValidateNested
+  decorate_1_from                       = "class-validator"
+  decorate_1_arguments                  = "[]"
+  decorate_2_type                       = "Create@(One|Many)UserArgs"
+  decorate_2_field                      = data
+  decorate_2_from                       = "class-transformer"
+  decorate_2_arguments                  = "['() => {propertyType.0}']"
+  decorate_2_name                       = Type
+  decorate_2_namedImport                = true
+  decorate_3_type                       = "ProfileUncheckedCreateNestedOneWithoutUserInput"
+  decorate_3_field                      = "!(create)"
+  decorate_3_name                       = "HideField"
+  decorate_3_from                       = "@nestjs/graphql"
+  decorate_3_arguments                  = "[]"
+}
+
+// Model User: Represents a user in the system
+model User {
+  id       String         @id @default(cuid()) // Unique ID for the user, generated as cuid
+  /// @FieldType('Scalars.GraphQLEmailAddress')
+  email    String         @unique // Email must be unique for each user
+  phone    String?
+  /// @HideField()
+  password String // User's password
+  status   UserStatusEnum @default(INACTIVE) // Status of the user (ACTIVE, INACTIVE, BANNED, etc.)
+  username String         @unique @default(cuid()) // User's username
+  name     String?
+
+  twoFactorEnabled Boolean?
+  emailVerified    Boolean?
+  lastLogin        DateTime?
+  loginMethod      LoginMethod @default(LOCAL)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+
+  roles           Role[]            @relation("UserRoles") // Many-to-many relationship with Role (user can have multiple roles)
+  stats           UserStats?
+  memberships     UserMembership[]
+  PointsHistory   PointsHistory[]
+  MoneyHistory    MoneyHistory[]
+  QuestHistory    QuestHistory[]
+  UserAchievement UserAchievement[]
+  Rank            Rank[]
+
+  @@index([email])
+  @@index([username])
+}
+
+model UserStats {
+  id     String @id @default(cuid()) // Unique ID
+  userId String @unique // Foreign key to User
+  user   User   @relation(fields: [userId], references: [id])
+
+  avatarFrame String? // Avatar frame
+  points      Int     @default(0) // User points
+  bonus       Int     @default(0) // Bonus money
+  money       Float   @default(0) // User's money
+  level       Int     @default(1) // User's level
+  exp         Float   @default(0) // Experience points (EXP)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([points]) // Index for querying users by points
+  @@index([level]) // Index for querying users by level
+  @@index([money]) // Index for querying users by money
+}
+
+model PointsHistory {
+  id     String @id @default(cuid()) // Unique ID
+  userId String // Foreign key to User
+  user   User   @relation(fields: [userId], references: [id])
+
+  points    Int // Points change
+  reason    String? // Reason for points change (e.g., completing a quest)
+  createdAt DateTime @default(now())
+
+  @@index([userId]) // Index for querying points history of a specific user
+  @@index([createdAt]) // Index for querying points history by date
+}
+
+model MoneyHistory {
+  id     String @id @default(cuid()) // Unique ID
+  userId String // Foreign key to User
+  user   User   @relation(fields: [userId], references: [id])
+
+  amount    Float // Money change
+  reason    String? // Reason for money change (e.g., purchasing an item)
+  createdAt DateTime @default(now())
+
+  @@index([userId]) // Index for querying money history of a specific user
+  @@index([createdAt]) // Index for querying money history by date
+}
+
+model Quest {
+  id             String         @id @default(cuid()) // Unique ID
+  name           String
+  description    String?
+  type           QuestType
+  rewardPoints   Int
+  rewardMoney    Float
+  isRepeatable   Boolean        @default(false) // Can it be repeated?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  questHistories QuestHistory[]
+
+  @@index([type]) // Index for filtering quests by type
+  @@index([rewardPoints]) // Index for filtering quests by reward points
+  @@index([rewardMoney]) // Index for filtering quests by reward money
+  @@index([isRepeatable]) // Index for filtering repeatable quests
+}
+
+model QuestHistory {
+  id      String @id @default(cuid()) // Unique ID
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+  questId String
+  quest   Quest  @relation(fields: [questId], references: [id])
+
+  status      QuestStatusEnum @default(PENDING)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId]) // Index for querying quest history of a specific user
+  @@index([questId]) // Index for querying quest history by quest
+  @@index([status]) // Index for filtering quest history by status
+  @@index([startedAt, completedAt]) // Composite index for filtering by quest period
+}
+
+model MembershipPlan {
+  id             String   @id @default(cuid()) // Unique ID for membership plan
+  name           String   @unique // Name of the membership plan (e.g., Basic, Premium, VIP)
+  price          Float // Price of the membership plan
+  durationInDays Int // Duration of the plan (in days)
+  benefits       String? // Benefits of the plan (e.g., "Increased points, discounts, special access")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userMemberships UserMembership[] // Relationship with UserMembership
+
+  @@index([price]) // Index for querying plans by price
+  @@index([durationInDays]) // Index for querying plans by duration
+}
+
+model UserMembership {
+  id               String         @id @default(cuid()) // Unique ID for user membership
+  userId           String // Foreign key to User
+  user             User           @relation(fields: [userId], references: [id])
+  membershipPlanId String // Foreign key to MembershipPlan
+  membershipPlan   MembershipPlan @relation(fields: [membershipPlanId], references: [id])
+
+  startDate DateTime // Start date of the membership
+  endDate   DateTime // End date of the membership
+  isActive  Boolean  @default(true) // Whether the membership is active
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId]) // Index for querying memberships by user
+  @@index([membershipPlanId]) // Index for querying memberships by plan
+  @@index([isActive]) // Index for querying active memberships
+  @@index([startDate, endDate]) // Composite index for querying by membership period
+}
+
+// Model Role: Represents roles that users can have in the system
+model Role {
+  id          String         @id @default(cuid()) // Unique ID for the role, generated as cuid
+  name        String // Name of the role (e.g., "Admin", "User")
+  key         String         @unique // Unique key for the role (to identify the role in the system)
+  description String? // Optional description of the role
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  status      RoleStatusEnum @default(ACTIVE)
+  users       User[]         @relation("UserRoles") // Many-to-many relationship with User (role can be assigned to multiple users)
+  permissions Permission[]   @relation("RolePermissions") // Many-to-many relationship with Permission (role can have multiple permissions)
+
+  @@index([key])
+}
+
+// Model Permission: Represents permissions that can be assigned to roles
+model Permission {
+  id          String               @id @default(cuid()) // Unique ID for the permission, generated as cuid
+  name        String // Name of the permission (e.g., "SEND NOTIFICATION")
+  key         String               @unique // Unique key for the permission  (e.g., "SEND_NOTIFICATION")
+  description String? // Optional description of the permission
+  resource    String // The resource to which the permission applies (e.g., "NOTIFICATION", "USER")
+  action      String // The action the permission allows (e.g., "CREATE", "UPDATE", "DELETE")
+  status      PermissionStatusEnum @default(ACTIVE)
+  roles       Role[]               @relation("RolePermissions") // Many-to-many relationship with Role (permission can be assigned to multiple roles)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([key])
+  @@index([resource, action])
+}
+
+model Achievement {
+  id          String   @id @default(cuid()) // Unique ID for the achievement
+  name        String // Achievement name
+  description String? // Achievement description
+  icon        String? // Path or URL to the achievement icon
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userAchievements UserAchievement[]
+
+  @@index([name])
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid()) // Unique ID
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  achievedAt    DateTime    @default(now()) // Time of achievement
+
+  @@index([userId]) // Index for querying achievements of a user
+  @@index([achievementId]) // Index for querying users who achieved a specific achievement
+}
+
+model Rank {
+  id        String   @id @default(cuid()) // Unique ID
+  userId    String // Association with User
+  user      User     @relation(fields: [userId], references: [id])
+  score     Float // User score
+  rankType  RankType // Rank type (Daily, Weekly, Monthly, etc.)
+  period    String // Time period (eg: "2025-05-08" for Daily, "2025-05" for Monthly, "2025" for Yearly)
+  createdAt DateTime @default(now()) // Date the rank was recorded
+
+  @@index([userId]) // Index for querying ranks of a specific user
+  @@index([rankType, period]) // Composite index for filtering by rank type and period
+}
+
+/**
+ * --------------------------------ENUM SETUP----------------------------
+ */
+
+enum RankType {
+  DAILY // Daily rank
+  WEEKLY // Weekly rank
+  MONTHLY // Monthly rank
+  YEARLY // Yearly rank
+  ALL_TIME // All-time rank
+}
+
+enum LoginMethod {
+  LOCAL // email and password
+  GOOGLE
+  FACEBOOK
+  GITHUB
+  WEIBO
+  TWITTER
+  LINE
+  MICROSOFT
+  LINKEDIN
+  AMAZON
+  WECHAT
+}
+
+enum UserStatusEnum {
+  ACTIVE // User active
+  INACTIVE // The account exists but is not currently in use. This could be for users who haven't completed certain steps like email verification
+  SUSPENDED // The account has been temporarily disabled due to reasons such as violating terms of service or other policies
+  LOCKED // The account is locked, possibly due to multiple failed login attempts or security concerns
+  CLOSED // The account has been permanently closed, either by the user or by the system (in case of long-term inactivity or compliance reasons)
+  ARCHIVED // The account is no longer active but has been archived for record-keeping purposes.
+}
+
+enum RoleStatusEnum {
+  ACTIVE // Role active
+  INACTIVE // The role exists but is not currently available for assignment. This can be used for roles that are temporarily not in use
+  DEPRECATED // Indicates that the role is outdated or no longer relevant, but still exists for historical or legacy reasons.
+  LOCKED // The role is locked from being assigned to any new users, possibly due to security or organizational changes.
+  ARCHIVED //The role is no longer active but is kept for record-keeping or audit purposes.
+}
+
+enum PermissionStatusEnum {
+  ACTIVE // Indicates that the permission is currently active and can be assigned to roles.
+  INACTIVE // The permission exists but is not currently available for assignment. Useful for temporarily disabling a permission without removing it
+  DEPRECATED // Signifies that the permission is outdated or no longer relevant for new assignments, but still exists for legacy support.
+  ARCHIVED //The permission is no longer in active use but is retained for record-keeping or audit purposes.
+}
+
+enum QuestStatusEnum {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum QuestType {
+  DAILY // Daily Quest
+  EVENT // Event Quest
+  SPECIAL // Special Quest
+  STORY // Story Quest
+  CHALLENGE // Challenge Quest
+}
