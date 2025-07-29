@@ -26,8 +26,8 @@ RUN mkdir -p src
 # Copy package files first for better caching
 COPY package.docker.json ./package.json
 
-# Install dependencies using npm (more reliable in Docker)
-RUN npm install
+# Install dependencies using npm with faster options
+RUN npm install --omit=dev --no-audit --no-fund
 
 # Copy necessary configuration files
 COPY tsconfig*.json ./
