@@ -1,0 +1,30 @@
+# Use Bun as the base image for development
+FROM oven/bun:latest
+
+# Set the working directory
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package.json bun.lock ./
+
+# Install dependencies (including dev dependencies for development)
+# Use --ignore-optional to skip problematic local dependencies during Docker build
+RUN bun install --ignore-optional || bun install --no-link
+
+# Copy prisma schema and generate client
+COPY prisma ./prisma
+RUN bunx prisma generate
+
+# Copy the rest of the application
+COPY . .
+
+# Set environment variables for development
+ENV NODE_ENV=development
+ARG PORT=3000
+ENV PORT=${PORT}
+
+# Expose the development port
+EXPOSE ${PORT}
+
+# Start the application in development mode with hot reloading
+CMD ["bun", "run", "dev"]
